@@ -10,6 +10,38 @@ import 'about_page.dart';
 import 'contact_page.dart';
 import 'sign_in_page.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+// Define a minimal Product model within this file
+class Product {
+  final int id;
+  final String title;
+  final double price;
+  final String description;
+  final String category;
+  final List<String> images;
+
+  Product({
+    required this.id,
+    required this.title,
+    required this.price,
+    required this.description,
+    required this.category,
+    required this.images,
+  });
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['id'],
+      title: json['title'],
+      price: json['price'].toDouble(),
+      description: json['description'],
+      category: json['category']['name'],
+      images: List<String>.from(json['images']),
+    );
+  }
+}
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -31,6 +63,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   late AnimationController _controller;
   late Animation<double> _animation;
   bool _isLoading = false;
+  List<Product> _products = [];
+  bool _isProductLoading = false;
 
   @override
   void initState() {
@@ -41,6 +75,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     );
     _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
     _fetchPosts();
+    _fetchProducts();
     _controller.forward();
   }
 
@@ -51,6 +86,32 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _descriptionController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchProducts() async {
+    setState(() {
+      _isProductLoading = true;
+    });
+    try {
+      final response = await http.get(Uri.parse('https://api.escuelajs.co/api/v1/products'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          _products = data.map((json) => Product.fromJson(json)).toList();
+          _isProductLoading = false;
+        });
+      } else {
+        throw Exception('Failed to load products: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching products: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load products: $e')),
+      );
+      setState(() {
+        _isProductLoading = false;
+      });
+    }
   }
 
   Future<void> _fetchPosts() async {
@@ -236,6 +297,99 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         child: SafeArea(
           child: Column(
             children: [
+              // Product Section at the Top
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Featured Products',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black26,
+                            offset: Offset(2, 2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 150,
+                      child: _isProductLoading
+                          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                          : _products.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                    'No products found',
+                                    style: TextStyle(color: Colors.white70, fontSize: 16),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: _products.length,
+                                  itemBuilder: (context, index) {
+                                    final product = _products[index];
+                                    return Container(
+                                      width: 120,
+                                      margin: const EdgeInsets.only(right: 10),
+                                      child: Card(
+                                        elevation: 4,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            ClipRRect(
+                                              borderRadius: const BorderRadius.only(
+                                                topLeft: Radius.circular(10),
+                                                topRight: Radius.circular(10),
+                                              ),
+                                              child: product.images.isNotEmpty
+                                                  ? Image.network(
+                                                      product.images[0],
+                                                      height: 80,
+                                                      width: double.infinity,
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder: (context, error, stackTrace) =>
+                                                          const Icon(Icons.error, size: 40),
+                                                    )
+                                                  : const Icon(Icons.image_not_supported, size: 40),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    product.title,
+                                                    style: const TextStyle(
+                                                        fontSize: 14, fontWeight: FontWeight.bold),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  Text(
+                                                    '\$${product.price.toStringAsFixed(2)}',
+                                                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                    ),
+                  ],
+                ),
+              ),
+              // Existing UI Below
               FadeTransition(
                 opacity: _animation,
                 child: Padding(
