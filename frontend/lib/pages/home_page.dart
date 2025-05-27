@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // Import kIsWeb
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/post.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -18,48 +18,85 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   final ApiService _apiService = ApiService();
   final AuthService _authService = AuthService();
   List<Post> _posts = [];
+  List<Post> _filteredPosts = [];
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _searchController = TextEditingController();
   File? _image;
   final _picker = ImagePicker();
+  late AnimationController _controller;
+  late Animation<double> _animation;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
     _fetchPosts();
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchPosts() async {
+    setState(() {
+      _isLoading = true;
+    });
     try {
       final posts = await _apiService.fetchPosts();
       setState(() {
         _posts = posts;
+        _filteredPosts = posts;
+        _isLoading = false;
       });
     } catch (e) {
       print('Error fetching posts: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to load posts: $e')),
       );
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
+void _filterPosts(String query) {
+  setState(() {
+    _filteredPosts = _posts.where((post) {
+      final nameLower = post.name?.toLowerCase() ?? '';
+      final descriptionLower = post.description?.toLowerCase() ?? '';
+      final queryLower = query.toLowerCase();
+      return nameLower.contains(queryLower) || descriptionLower.contains(queryLower);
+    }).toList();
+  });
+}
+
   Future<void> _pickImage() async {
     if (kIsWeb) {
-      // On web, use file picker directly without permission request
       final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
       if (pickedFile != null) {
         setState(() {
-          _image = File(pickedFile.path); // Note: File handling on web might need adjustment
+          _image = File(pickedFile.path);
         });
       } else {
         print('No image selected');
       }
     } else {
-      // On mobile, request permission
       final permissionStatus = await Permission.photos.request();
       if (permissionStatus.isGranted) {
         final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
@@ -96,6 +133,7 @@ class _HomePageState extends State<HomePage> {
 
       setState(() {
         _posts.add(newPost);
+        _filteredPosts = _posts;
         _nameController.clear();
         _descriptionController.clear();
         _image = null;
@@ -117,26 +155,51 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Upload Post'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Upload Post', style: TextStyle(color: Color(0xFF4A90E2))),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  prefixIcon: const Icon(Icons.title, color: Color(0xFF50E3C2)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: Color(0xFF50E3C2)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
               ),
+              const SizedBox(height: 16),
               TextField(
                 controller: _descriptionController,
-                decoration: const InputDecoration(labelText: 'Description'),
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  prefixIcon: const Icon(Icons.description, color: Color(0xFF50E3C2)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: Color(0xFF50E3C2)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                maxLines: 3,
               ),
               const SizedBox(height: 16),
               _image == null
                   ? const Text('No image selected.')
-                  : Image.file(_image!, height: 100),
-              TextButton(
+                  : Image.file(_image!, height: 100, fit: BoxFit.cover),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
                 onPressed: _pickImage,
-                child: const Text('Pick Image'),
+                icon: const Icon(Icons.image),
+                label: const Text('Pick Image'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF50E3C2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ],
           ),
@@ -144,10 +207,14 @@ class _HomePageState extends State<HomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Colors.red)),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: _uploadPost,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF4A90E2),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             child: const Text('Upload'),
           ),
         ],
@@ -158,11 +225,108 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF4A90E2), Color(0xFF50E3C2)],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              FadeTransition(
+                opacity: _animation,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Welcome to Blog App!',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black26,
+                          offset: Offset(2, 2),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search posts...',
+                    prefixIcon: const Icon(Icons.search, color: Colors.white70),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.2),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  onChanged: _filterPosts,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                    : _filteredPosts.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No posts found',
+                              style: TextStyle(color: Colors.white70, fontSize: 18),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(16.0),
+                            itemCount: _filteredPosts.length,
+                            itemBuilder: (context, index) {
+                              return Dismissible(
+                                key: Key(_filteredPosts[index].id.toString()),
+                                background: Container(
+                                  color: Colors.red,
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20),
+                                  child: const Icon(Icons.delete, color: Colors.white),
+                                ),
+                                onDismissed: (direction) {
+                                  setState(() {
+                                    _filteredPosts.removeAt(index);
+                                    _posts = _filteredPosts;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Post deleted (mock)')),
+                                  );
+                                },
+                                child: PostCard(post: _filteredPosts[index]),
+                              );
+                            },
+                          ),
+              ),
+            ],
+          ),
+        ),
+      ),
       appBar: AppBar(
-        title: const Text('Home'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('Blog App', style: TextStyle(color: Colors.white)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _fetchPosts,
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
               await _authService.logout();
               Navigator.pushReplacement(
@@ -174,46 +338,76 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       drawer: Drawer(
-        child: ListView(
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
-              child: Text('Blog App', style: TextStyle(color: Colors.white, fontSize: 24)),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF4A90E2), Color(0xFF50E3C2)],
             ),
-            ListTile(
-              title: const Text('Home'),
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('About'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const AboutPage()),
-                );
-              },
-            ),
-            ListTile(
-              title: const Text('Contact'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const ContactPage()),
-                );
-              },
-            ),
-          ],
+          ),
+          child: ListView(
+            children: [
+              DrawerHeader(
+                decoration: const BoxDecoration(color: Colors.transparent),
+                child: Row(
+                  children: [
+                    const Icon(Icons.book, size: 40, color: Colors.white),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Blog App',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black26,
+                            offset: Offset(2, 2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.home, color: Colors.white),
+                title: const Text('Home', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.info, color: Colors.white),
+                title: const Text('About', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AboutPage()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.contact_mail, color: Colors.white),
+                title: const Text('Contact', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ContactPage()),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
-      ),
-      body: ListView.builder(
-        itemCount: _posts.length,
-        itemBuilder: (context, index) => PostCard(post: _posts[index]),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showUploadDialog,
-        child: const Icon(Icons.add),
+        backgroundColor: Color(0xFF4A90E2),
+        child: const Icon(Icons.add, color: Colors.white),
+        elevation: 8,
       ),
     );
   }
