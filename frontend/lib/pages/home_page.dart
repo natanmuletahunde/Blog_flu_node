@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; // Import kIsWeb
 import '../models/post.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -32,18 +34,48 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _fetchPosts() async {
-    final posts = await _apiService.fetchPosts();
-    setState(() {
-      _posts = posts;
-    });
+    try {
+      final posts = await _apiService.fetchPosts();
+      setState(() {
+        _posts = posts;
+      });
+    } catch (e) {
+      print('Error fetching posts: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load posts: $e')),
+      );
+    }
   }
 
   Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _image = File(pickedFile.path);
-      });
+    if (kIsWeb) {
+      // On web, use file picker directly without permission request
+      final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile != null) {
+        setState(() {
+          _image = File(pickedFile.path); // Note: File handling on web might need adjustment
+        });
+      } else {
+        print('No image selected');
+      }
+    } else {
+      // On mobile, request permission
+      final permissionStatus = await Permission.photos.request();
+      if (permissionStatus.isGranted) {
+        final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+        if (pickedFile != null) {
+          setState(() {
+            _image = File(pickedFile.path);
+          });
+        } else {
+          print('No image selected');
+        }
+      } else if (permissionStatus.isDenied) {
+        print('Photo permission denied');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo permission is required to pick images')),
+        );
+      }
     }
   }
 
@@ -55,24 +87,30 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    await _apiService.uploadPost(
-      _nameController.text,
-      _descriptionController.text,
-      _image!.path,
-    );
+    try {
+      final newPost = await _apiService.uploadPost(
+        _nameController.text,
+        _descriptionController.text,
+        _image!.path,
+      );
 
-    setState(() {
-      _posts.add(Post(
-        name: _nameController.text,
-        description: _descriptionController.text,
-        imageUrl: '/uploads/${_image!.path.split('/').last}',
-      ));
-      _nameController.clear();
-      _descriptionController.clear();
-      _image = null;
-    });
+      setState(() {
+        _posts.add(newPost);
+        _nameController.clear();
+        _descriptionController.clear();
+        _image = null;
+      });
 
-    Navigator.pop(context);
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Post uploaded successfully')),
+      );
+    } catch (e) {
+      print('Error uploading post: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload post: $e')),
+      );
+    }
   }
 
   void _showUploadDialog() {
