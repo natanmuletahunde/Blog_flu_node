@@ -75,16 +75,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-void _filterPosts(String query) {
-  setState(() {
-    _filteredPosts = _posts.where((post) {
-      final nameLower = post.name?.toLowerCase() ?? '';
-      final descriptionLower = post.description?.toLowerCase() ?? '';
-      final queryLower = query.toLowerCase();
-      return nameLower.contains(queryLower) || descriptionLower.contains(queryLower);
-    }).toList();
-  });
-}
+  void _filterPosts(String query) {
+    setState(() {
+      _filteredPosts = _posts.where((post) {
+        final nameLower = post.name?.toLowerCase() ?? '';
+        final descriptionLower = post.description?.toLowerCase() ?? '';
+        final queryLower = query.toLowerCase();
+        return nameLower.contains(queryLower) || descriptionLower.contains(queryLower);
+      }).toList();
+    });
+  }
 
   Future<void> _pickImage() async {
     if (kIsWeb) {
@@ -240,20 +240,33 @@ void _filterPosts(String query) {
                 opacity: _animation,
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Welcome to Blog App!',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black26,
-                          offset: Offset(2, 2),
-                          blurRadius: 4,
+                  child: Column(
+                    children: [
+                      Text(
+                        'Welcome to Blog App!',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black26,
+                              offset: Offset(2, 2),
+                              blurRadius: 4,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '06:35 PM EAT on Monday, May 26, 2025',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white70,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
